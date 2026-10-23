@@ -1,44 +1,98 @@
 
-name: Android SDL3 ARM64 test
+name: Build SDL3 Android test APK
 
 on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build-apk:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Java
+      - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Install Android SDK
+      - name: Set up Android SDK
         uses: android-actions/setup-android@v4
 
-      - name: Install Android NDK
-        run: sdkmanager "ndk;28.2.13676358" "platforms;android-35" "build-tools;35.0.0"
+      - name: Install Android packages
+        run: |
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "ndk;28.2.13676358"
 
-      - name: Download SDL3
+      - name: Download SDL3 source
         run: git clone --depth 1 https://github.com/libsdl-org/SDL.git SDL
 
-      - name: Configure SDL3 for Android
+      - name: Create test program
         run: |
-          cmake -S SDL -B build-android \
-            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_HOME/ndk/28.2.13676358/build/cmake/android.toolchain.cmake" \
-            -DANDROID_ABI=arm64-v8a \
-            -DANDROID_PLATFORM=android-24 \
-            -DSDL_SHARED=ON \
-            -DSDL_STATIC=OFF \
-            -DSDL_TESTS=OFF \
-            -DSDL_EXAMPLES=OFF \
-            -DCMAKE_BUILD_TYPE=Release
+          cat > SDL/android_test.c <<'EOF'
+          #include <SDL3/SDL.h>
 
-      - name: Build SDL3
-        run: cmake --build build-android --parallel 2
-        
+          int main(int argc, char *argv[])
+          {
+              SDL_Window *window = NULL;
+              SDL_Renderer *renderer = NULL;
+              SDL_Event event;
+              int running = 1;
+
+              if (!SDL_Init(SDL_INIT_VIDEO)) {
+                  SDL_Log("SDL_Init failed: %s", SDL_GetError());
+                  return 1;
+              }
+
+              if (!SDL_CreateWindowAndRenderer(
+                      "SDL3 Android Test", 800, 600, 0,
+                      &window, &renderer)) {
+                  SDL_Log("Window creation failed: %s", SDL_GetError());
+                  SDL_Quit();
+                  return 1;
+              }
+
+              while (running) {
+                  while (SDL_PollEvent(&event)) {
+                      if (event.type == SDL_EVENT_QUIT) {
+                          running = 0;
+                      }
+                  }
+
+                  SDL_SetRenderDrawColor(renderer, 25, 70, 130, 255);
+                  SDL_RenderClear(renderer);
+                  SDL_RenderPresent(renderer);
+                  SDL_Delay(16);
+              }
+
+              SDL_DestroyRenderer(renderer);
+              SDL_DestroyWindow(window);
+              SDL_Quit();
+              return 0;
+          }
+          EOF
+
+      - name: Generate Android project
+        working-directory: SDL
+        run: |
+          python3 build-scripts/create-android-project.py \
+            com.example.sdlprobe android_test.c
+
+      - name: Build APK
+        working-directory: SDL/build/com.example.sdlprobe
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: SDL3-Android-Test-APK
+          path: SDL/build/com.example.sdlprobe/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          
