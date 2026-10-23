@@ -1,0 +1,65 @@
+name: Android ARM64 runtime probe
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/android-runtime-probe.yml"
+      - "CMakeLists.txt"
+      - "tools/xboxrecomp"
+      - "tools/xboxrecomp/**"
+
+permissions:
+  contents: read
+
+jobs:
+  runtime-probe:
+    name: Compile runtime libraries (no game data)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout source and submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Install Android SDK components
+        uses: android-actions/setup-android@v3
+
+      - name: Install NDK, CMake and Ninja
+        run: |
+          sdkmanager --install "ndk;27.2.12479018" "cmake;3.31.6" "build-tools;35.0.0"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          echo "$ANDROID_HOME/cmake/3.31.6/bin" >> "$GITHUB_PATH"
+
+      - name: Record toolchain versions
+        run: |
+          cmake --version
+          ninja --version
+          "$ANDROID_NDK_HOME/ndk-build" --version || true
+          git submodule status --recursive
+
+      - name: Configure Android ARM64 runtime-only build
+        shell: bash
+        run: |
+          set -o pipefail
+          cmake -S . -B build/android-arm64-probe -G Ninja             -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake"             -DANDROID_ABI=arm64-v8a             -DANDROID_PLATFORM=android-26             -DCMAKE_BUILD_TYPE=Release             -DDEFJAM_BUILD_GAME=OFF             -DDEFJAM_SDL3=OFF             2>&1 | tee android-configure.log
+
+      - name: Build runtime libraries
+        shell: bash
+        run: |
+          set -o pipefail
+          cmake --build build/android-arm64-probe --parallel 2 2>&1 | tee android-build.log
+
+      - name: Upload probe logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-arm64-probe-logs
+          path: |
+            android-configure.log
+            android-build.log
+          if-no-files-found: warn
+          retention-days: 14
+        
