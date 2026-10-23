@@ -1,5 +1,5 @@
 
-name: Build SDL3 Android test APK
+name: Build official SDL3 Android test
 
 on:
   workflow_dispatch:
@@ -29,62 +29,19 @@ jobs:
             "build-tools;35.0.0" \
             "ndk;28.2.13676358"
 
-      - name: Download SDL3 source
+      - name: Download SDL3
         run: git clone --depth 1 https://github.com/libsdl-org/SDL.git SDL
 
-      - name: Create test program
-        run: |
-          cat > SDL/android_test.c <<'EOF'
-          #include <SDL3/SDL.h>
-
-          int main(int argc, char *argv[])
-          {
-              SDL_Window *window = NULL;
-              SDL_Renderer *renderer = NULL;
-              SDL_Event event;
-              int running = 1;
-
-              if (!SDL_Init(SDL_INIT_VIDEO)) {
-                  SDL_Log("SDL_Init failed: %s", SDL_GetError());
-                  return 1;
-              }
-
-              if (!SDL_CreateWindowAndRenderer(
-                      "SDL3 Android Test", 800, 600, 0,
-                      &window, &renderer)) {
-                  SDL_Log("Window creation failed: %s", SDL_GetError());
-                  SDL_Quit();
-                  return 1;
-              }
-
-              while (running) {
-                  while (SDL_PollEvent(&event)) {
-                      if (event.type == SDL_EVENT_QUIT) {
-                          running = 0;
-                      }
-                  }
-
-                  SDL_SetRenderDrawColor(renderer, 25, 70, 130, 255);
-                  SDL_RenderClear(renderer);
-                  SDL_RenderPresent(renderer);
-                  SDL_Delay(16);
-              }
-
-              SDL_DestroyRenderer(renderer);
-              SDL_DestroyWindow(window);
-              SDL_Quit();
-              return 0;
-          }
-          EOF
-
-      - name: Generate Android project
+      - name: Generate official SDL3 test app
         working-directory: SDL
         run: |
           python3 build-scripts/create-android-project.py \
-            com.example.sdlprobe android_test.c
+            org.libsdl.testspriteminimal \
+            test/testspriteminimal.c \
+            test/icon.h
 
       - name: Build APK
-        working-directory: SDL/build/com.example.sdlprobe
+        working-directory: SDL/build/org.libsdl.testspriteminimal
         run: |
           chmod +x gradlew
           ./gradlew assembleDebug
@@ -92,7 +49,7 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: SDL3-Android-Test-APK
-          path: SDL/build/com.example.sdlprobe/app/build/outputs/apk/debug/*.apk
+          name: SDL3-Official-Test-APK
+          path: SDL/build/org.libsdl.testspriteminimal/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           
