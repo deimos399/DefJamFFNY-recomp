@@ -25,7 +25,9 @@ jobs:
           fetch-depth: 0
 
       - name: Install Android SDK components
-        uses: android-actions/setup-android@v3
+  uses: android-actions/setup-android@v4
+  with:
+    packages: 'platform-tools'
 
       - name: Install NDK, CMake and Ninja
         run: |
